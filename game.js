@@ -81,33 +81,52 @@ function burst(x, y, color, n, sp = 120) {
 
 function startGame() {
   st = L.newGame((Math.random() * 2 ** 31) | 0);
+  holds.clear();
   mode = 'play'; newBest = false; particles = []; tilt = 0;
   $('overlay').classList.add('hidden');
   updateHud();
 }
 
-// ---------- 입력 ----------
-function tap() {
-  if (mode === 'title' || mode === 'paused') return;
-  if (mode === 'over') return;
-  if (L.flap(st)) { tutorialSignal('flap'); wing = 1; sfx.flap(); burst(BX - 8, st.y + 8, 'rgba(255,255,255,.9)', 3, 60); }
+// ---------- 입력: 누르고 있으면 올라가고, 떼면 떨어진다 ----------
+const holds = new Set();             // 지금 누르고 있는 것들 (손가락 번호·키). 하나라도 있으면 올라간다
+let flapAcc = 0, holdSignaled = false;
+function syncHold() {
+  const want = holds.size > 0 && mode === 'play';
+  if (want && !st.hold) {
+    if (L.press(st)) { holdSignaled = false; flapAcc = 0; wing = 1; sfx.flap(); burst(BX - 8, st.y + 8, 'rgba(255,255,255,.9)', 3, 60); }
+  } else if (!want && st.hold) {
+    L.release(st);
+    if (holdSignaled) tutorialSignal('release');                 // 꾹 눌렀다가 뗐다
+  }
 }
-canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); tap(); });
+function clearHolds() { holds.clear(); syncHold(); }
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  try { canvas.setPointerCapture(e.pointerId); } catch (_) {}
+  holds.add('p' + e.pointerId); syncHold();
+});
+const pointerUp = (e) => { holds.delete('p' + e.pointerId); syncHold(); };
+canvas.addEventListener('pointerup', pointerUp);
+canvas.addEventListener('pointercancel', pointerUp);
+canvas.addEventListener('lostpointercapture', pointerUp);
+const isFlapKey = (code) => code === 'Space' || code === 'ArrowUp' || code === 'KeyW';
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+  if (isFlapKey(e.code)) {
     e.preventDefault();
     if (mode === 'over') { if (performance.now() - overAt > 600 && !$('overlay').classList.contains('hidden')) startGame(); return; }
     if (mode === 'title') { startGame(); return; }
-    tap();
+    holds.add(e.code); syncHold();
   } else if (e.code === 'KeyP' || e.code === 'Escape') { mode === 'paused' ? resume() : pause(); }
   else if (e.code === 'KeyM') toggleMute();
 });
+addEventListener('keyup', (e) => { if (isFlapKey(e.code)) { holds.delete(e.code); syncHold(); } });
 
 // ---------- 일시정지 ----------
 let prevMode = 'play';
 function pause() {
   if (mode !== 'play' || st.state !== 'play') return;
+  clearHolds();
   mode = 'paused'; prevMode = 'play';
   $('overlay').innerHTML = `<h2>일시정지</h2><div class="col"><button id="resumeBtn">계속하기</button></div>`;
   $('overlay').classList.remove('hidden');
@@ -119,8 +138,8 @@ function resume() {
   mode = 'play'; $('overlay').classList.add('hidden'); $('pauseBtn').textContent = '⏸';
 }
 $('pauseBtn').onclick = (e) => { e.currentTarget.blur(); mode === 'paused' ? resume() : pause(); };
-addEventListener('blur', pause);
-document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+addEventListener('blur', () => { clearHolds(); pause(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { clearHolds(); pause(); } });
 
 // ---------- 화면 ----------
 const MEDALS = [null, ['동메달', '#d98a4a'], ['은메달', '#c5ccd6'], ['금메달', '#ffd23f']];
@@ -128,7 +147,7 @@ function showTitle() {
   mode = 'title';
   $('overlay').innerHTML = `
     <h1>푸드덕<br>병아리</h1>
-    <p>화면을 <b>탭</b>하면 푸드덕 날아올라요<br>사탕 기둥 사이 <b>틈</b>으로 쏙 지나가요</p>
+    <p>화면을 <b>꾹 누르고</b> 있으면 위로 올라가고<br><b>떼면</b> 내려가요<br>사탕 기둥 사이 <b>틈</b>으로 쏙 지나가요</p>
     <div class="col"><button id="startBtn">시작하기</button></div>
     <p style="font-size:12px;opacity:.85">PC: 스페이스 · ↑ &nbsp; P 일시정지 · M 소리</p>`;
   $('overlay').classList.remove('hidden');
@@ -238,7 +257,7 @@ function drawReady() {
   if (st.state !== 'ready' || mode !== 'play') return;
   const a = 0.75 + 0.25 * Math.sin(uiT * 5);
   ctx.globalAlpha = a; ctx.font = '26px Jua, sans-serif'; ctx.textAlign = 'center'; ctx.lineWidth = 6; ctx.strokeStyle = INK; ctx.lineJoin = 'round';
-  ctx.strokeText('탭해서 시작!', W / 2, 360); ctx.fillStyle = '#fff'; ctx.fillText('탭해서 시작!', W / 2, 360);
+  ctx.strokeText('꾹 눌러서 시작!', W / 2, 360); ctx.fillStyle = '#fff'; ctx.fillText('꾹 눌러서 시작!', W / 2, 360);
   ctx.globalAlpha = 1;
 }
 
@@ -267,11 +286,16 @@ function frame(now) {
     // 고정 간격으로 나눠 갱신 (프레임이 느려도 충돌을 놓치지 않게)
     let left = dt;
     while (left > 0 && !st.over) { const d = Math.min(1 / 120, left); L.step(st, d); left -= d; }
+    if (st.hold) {
+      flapAcc += dt;
+      if (flapAcc > 0.16) { flapAcc = 0; wing = 1; sfx.flap(); burst(BX - 8, st.y + 8, 'rgba(255,255,255,.9)', 2, 50); }   // 누르고 있는 동안 계속 푸드덕
+      if (!holdSignaled && st.held >= 0.35) { holdSignaled = true; tutorialSignal('hold'); }                                 // 튜토리얼: 꾹 눌렀다
+    }
     for (const e of st.events) {
       if (e === 'score') { sfx.score(); updateHud(); }
       else if (e === 'die') {
         sfx.die(); shake = 0.5; flash = 0.5; burst(BX, st.y, '#ffe14d', 16, 200);
-        mode = 'over'; overAt = performance.now();
+        mode = 'over'; overAt = performance.now(); holds.clear();
         setTimeout(showOver, 500);
       }
     }

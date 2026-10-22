@@ -2,13 +2,14 @@
 
 // 푸드덕 병아리: 규칙만 모아 둔 파일 (그리기·입력 없음). 브라우저와 테스트(Node)가 같이 쓴다.
 //
-// - 병아리는 일정한 속도로 오른쪽으로 날아가고(세상이 왼쪽으로 흐른다), 탭하면 위로 푸드덕, 가만두면 떨어진다
+// - 병아리는 일정한 속도로 오른쪽으로 날아가고(세상이 왼쪽으로 흐른다), 누르고 있으면 위로 올라가고 떼면 떨어진다
 // - 사탕 기둥의 틈으로 지나가면 1점. 기둥·땅에 닿으면 끝 (천장은 닿아도 튕겨 내려올 뿐)
 // - 점수가 오를수록: 틈이 좁아지고, 조금씩 빨라지고, 12점부터는 위아래로 움직이는 기둥이 섞여 나온다
 const LOGIC_CHICK = (() => {
 const W = 360, H = 560, GROUND = 500;
 const BX = 96, R = 13;                       // 병아리 x 위치와 몸 반지름(충돌)
-const GRAV = 1500, FLAP = -420, VMAX = 560;  // px/s², 푸드덕 속도, 낙하 한계
+const GRAV = 1500, LIFT = 3400;              // px/s²: 떨어지는 힘 · 누르고 있을 때 위로 당기는 힘 (둘의 차이만큼 올라간다)
+const VUP = 380, VMAX = 520;                 // 올라가는 속도 한계 · 떨어지는 속도 한계 (px/s)
 const PIPE_W = 62;
 const MARGIN = 54;                           // 틈의 위·아래 끝이 천장·땅에서 최소한 떨어지는 거리
 const MOVE_FROM = 12;                        // 움직이는 기둥이 나오기 시작하는 점수
@@ -31,7 +32,7 @@ function rng(seed) {                         // mulberry32
 function newGame(seed = (Math.random() * 2 ** 31) | 0) {
   return {
     seed, rand: rng(seed), state: 'ready', t: 0, y: 250, vy: 0, score: 0, dist: 0,
-    pipes: [], nextX: W + 120, lastGap: 250, flaps: 0, over: false, events: [],
+    pipes: [], nextX: W + 120, lastGap: 250, hold: false, held: 0, flaps: 0, over: false, events: [],
   };
 }
 
@@ -55,10 +56,18 @@ function addPipe(st) {
 }
 const centerOf = (st, p) => p.c + (p.amp ? p.amp * Math.sin(p.ph + st.t * p.om) : 0);
 
-function flap(st) {
+// 누르기 시작: 첫 번째면 게임이 시작된다. 누르고 있는 동안 위로 올라간다
+function press(st) {
   if (st.over) return false;
   if (st.state === 'ready') st.state = 'play';
-  st.vy = FLAP; st.flaps++; st.events.push('flap');
+  if (!st.hold) { st.hold = true; st.held = 0; st.flaps++; st.events.push('flap'); }
+  return true;
+}
+// 뗌: 그때부터 떨어진다. 실제로 누르고 있었으면 true
+function release(st) {
+  if (!st.hold) return false;
+  st.hold = false;
+  st.events.push('release');
   return true;
 }
 
@@ -74,7 +83,8 @@ function step(st, dt) {
   if (st.state === 'ready') { st.y = 250 + Math.sin(st.t * 4) * 8; return; }   // 시작 전에는 둥실둥실
   const spd = speedFor(st.score);
   st.dist += spd * dt;
-  st.vy = Math.min(VMAX, st.vy + GRAV * dt);
+  if (st.hold) st.held += dt;
+  st.vy = Math.max(-VUP, Math.min(VMAX, st.vy + (GRAV - (st.hold ? LIFT : 0)) * dt));
   st.y += st.vy * dt;
   if (st.y - R < 0) { st.y = R; if (st.vy < 0) st.vy = 0; }
   for (const p of st.pipes) p.x -= spd * dt;
@@ -93,7 +103,7 @@ function die(st, why) { st.over = true; st.state = 'over'; st.why = why; st.even
 
 const medalOf = (score) => (score >= 40 ? 3 : score >= 25 ? 2 : score >= 10 ? 1 : 0);   // 0 없음 · 1 동 · 2 은 · 3 금
 
-const LOGIC = { W, H, GROUND, BX, R, PIPE_W, GRAV, FLAP, MARGIN, MOVE_FROM, speedFor, gapFor, spacingFor, newGame, flap, step, centerOf, medalOf, addPipe };
+const LOGIC = { W, H, GROUND, BX, R, PIPE_W, GRAV, LIFT, VUP, VMAX, MARGIN, MOVE_FROM, speedFor, gapFor, spacingFor, newGame, press, release, step, centerOf, medalOf, addPipe };
 return LOGIC;
 })();
 if (typeof module !== 'undefined') module.exports = LOGIC_CHICK;
