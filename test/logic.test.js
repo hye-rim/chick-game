@@ -85,7 +85,7 @@ test('every course is passable: a look-ahead autopilot gets far past the gold me
   }
 });
 
-test('same seed, same flaps → same game', () => {
+test('same seed and same flaps give the same game', () => {
   const a = autopilot(5, 20), b = autopilot(5, 20);
   assert.strictEqual(a.flaps, b.flaps);
   assert.strictEqual(a.dist, b.dist);
