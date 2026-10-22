@@ -1,4 +1,6 @@
 'use strict';
+// 오락실 튜토리얼이 '진짜로 일어난 일'을 알아채는 신호 (arcade/public/tutorial.js 가 듣는다. 튜토리얼이 아니면 아무도 안 듣는다)
+const tutorialSignal = (type) => window.dispatchEvent(new CustomEvent('arcade:tutorial', { detail: { type } }));
 
 // 푸드덕 병아리: 화면·입력·소리. 규칙은 logic.js
 const L = LOGIC_CHICK;
@@ -88,7 +90,7 @@ function startGame() {
 function tap() {
   if (mode === 'title' || mode === 'paused') return;
   if (mode === 'over') return;
-  if (L.flap(st)) { wing = 1; sfx.flap(); burst(BX - 8, st.y + 8, 'rgba(255,255,255,.9)', 3, 60); }
+  if (L.flap(st)) { tutorialSignal('flap'); wing = 1; sfx.flap(); burst(BX - 8, st.y + 8, 'rgba(255,255,255,.9)', 3, 60); }
 }
 canvas.addEventListener('pointerdown', (e) => { e.preventDefault(); tap(); });
 addEventListener('keydown', (e) => {
