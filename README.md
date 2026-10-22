@@ -8,4 +8,4 @@
 - 10점 동메달 · 25점 은메달 · 40점 금메달. 최고 점수는 `chickBest`
 - 조작: 화면 탭 / PC는 스페이스·↑, P 일시정지, M 소리
 
-규칙은 `logic.js`(화면 없이 Node 로 시험할 수 있다), 화면·입력·소리는 `game.js`.
+규칙은 `logic.js`(화면 없이 Node 로 시험할 수 있다: `node test/logic.test.js`), 화면·입력·소리는 `game.js`.
